@@ -23,8 +23,8 @@ private:
     cocos2d::RenderTexture* finalShadowMap = nullptr;
 	cocos2d::Sprite* finalShadowMapSprite = nullptr;
 
-    cocos2d::GLProgramState* shadowMapShader = nullptr;
-	cocos2d::GLProgramState* shadowRenderShader = nullptr;
+    cocos2d::backend::ProgramState* shadowMapShader = nullptr;
+    cocos2d::backend::ProgramState* shadowRenderShader = nullptr;
 
     void initOcclusionMap();
     void initShadowMap1D();
@@ -33,7 +33,7 @@ private:
     void createOcclusionMap();
     void createShadowMap(cocos2d::Renderer *renderer, const cocos2d::Mat4 &transform, bool transformUpdated);
     void updateShadowMap(cocos2d::Renderer *renderer, const cocos2d::Mat4 &transform, bool transformUpdated);
-	cocos2d::GLProgram* loadShader(const GLchar* vertexShader, const GLchar* fragmentShader);
+    cocos2d::backend::Program* loadShader(const std::string& vertexShader, const std::string& fragmentShader);
 public:
     int updateFrequency = 0;
     int updateCount = 0;
@@ -46,7 +46,7 @@ public:
     void draw(cocos2d::Renderer *renderer, const cocos2d::Mat4 &transform, uint32_t flags) override;
     void debugDraw(cocos2d::Renderer *renderer, const cocos2d::Mat4 &transform, bool transformUpdated);
 
-    void setPosition(const cocos2d::Point& position) override;
+    void setPosition(const cocos2d::Vec2& position) override;
     void setSoftShadows(bool shadows);
     void setLightSize(int lightSize);
     void setUpScale(float upScale);

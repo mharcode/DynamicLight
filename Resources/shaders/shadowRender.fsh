@@ -7,15 +7,15 @@ precision lowp float;
 varying vec2 v_texCoord;                                             
 varying vec4 v_color;                                                
                                                                      
-uniform sampler2D u_texture;                                         
-uniform sampler2D u_texture2;                                        
+uniform sampler2D u_texture;
+// uniform sampler2D u_texture1;
 uniform vec2 resolution;                                             
                                                                      
 uniform float softShadows;                                           
                                                                      
 //sample from the distance map                                       
 float sample(vec2 coord, float r) {                                  
-    return step(r, texture2D(u_texture2, coord).r);                  
+    return step(r, texture2D(u_texture, coord).r);
 }                                                                    
                                                                      
 void main(void) {                                                    

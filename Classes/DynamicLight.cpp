@@ -1,6 +1,14 @@
 #include "DynamicLight.h"
+#include "renderer/backend/Device.h"
 
 USING_NS_CC;
+using namespace cocos2d::backend;
+
+template<typename T>
+void setUniform(ProgramState* state, const std::string& name, T data)
+{
+    state->setUniform(state->getUniformLocation(name), &data, sizeof(data));
+}
 
 DynamicLight::~DynamicLight()
 {
@@ -12,6 +20,35 @@ DynamicLight::~DynamicLight()
     CC_SAFE_RELEASE(shadowCasters);
 }
 
+ProgramState* createProgramState(Program* program)
+{
+    auto _programState = new ProgramState(program);
+    
+    auto vertexLayout = _programState->getVertexLayout();
+    ///a_position
+    vertexLayout->setAttribute(backend::ATTRIBUTE_NAME_POSITION,
+                              _programState->getAttributeLocation(backend::Attribute::POSITION),
+                              backend::VertexFormat::FLOAT3,
+                              0,
+                              false);
+    ///a_texCoord
+    vertexLayout->setAttribute(backend::ATTRIBUTE_NAME_TEXCOORD,
+                              _programState->getAttributeLocation(backend::Attribute::TEXCOORD),
+                              backend::VertexFormat::FLOAT2,
+                              offsetof(V3F_C4B_T2F, texCoords),
+                              false);
+    
+    ///a_color
+    vertexLayout->setAttribute(backend::ATTRIBUTE_NAME_COLOR,
+                              _programState->getAttributeLocation(backend::Attribute::COLOR),
+                              backend::VertexFormat::UBYTE4,
+                              offsetof(V3F_C4B_T2F, colors),
+                              true);
+    vertexLayout->setLayout(sizeof(V3F_C4B_T2F));
+    
+    return _programState;
+}
+
 bool DynamicLight::init()
 {
     if (!Node::init()) {
@@ -21,9 +58,9 @@ bool DynamicLight::init()
     auto shadowMapShaderP = this->loadShader("shaders/pass.vsh", "shaders/shadowMap.fsh");
 	auto shadowRenderShaderP = this->loadShader("shaders/pass.vsh", "shaders/shadowRender.fsh");
 
-	shadowMapShader = GLProgramState::getOrCreateWithGLProgram(shadowMapShaderP);
-	shadowRenderShader = GLProgramState::getOrCreateWithGLProgram(shadowRenderShaderP);
-
+	shadowMapShader = createProgramState(shadowMapShaderP);
+	shadowRenderShader = createProgramState(shadowRenderShaderP);
+    
     initOcclusionMap();
     initShadowMap1D();
     initFinalShadowMap();
@@ -32,21 +69,15 @@ bool DynamicLight::init()
     return true;
 }
 
-GLProgram* DynamicLight::loadShader(const GLchar* vertexShader, const GLchar* fragmentShader)
+Program* DynamicLight::loadShader(const std::string& vertexShaderPath, const std::string& fragmentShaderPath)
 {
-	auto shader = ShaderCache::getInstance()->getGLProgram(fragmentShader);
-	if (!shader) {
-		shader = new GLProgram();
-		shader->initWithVertexShaderFilename(vertexShader, fragmentShader);
-		shader->bindAttribLocation(GLProgram::ATTRIBUTE_NAME_POSITION, GLProgram::VERTEX_ATTRIB_POSITION);
-		shader->bindAttribLocation(GLProgram::ATTRIBUTE_NAME_TEX_COORD, GLProgram::VERTEX_ATTRIB_TEX_COORDS);
-		shader->bindAttribLocation(GLProgram::ATTRIBUTE_NAME_COLOR, GLProgram::VERTEX_ATTRIB_COLOR);
-		shader->link();
-		shader->updateUniforms();
-		shader->use();
-	}
+    //custom vertex shader
+    auto vertSourceRaw = cocos2d::FileUtils::getInstance()->getStringFromFile(vertexShaderPath);
 
-	return shader;
+    //custom fragment shader
+    auto fragSourceRaw = cocos2d::FileUtils::getInstance()->getStringFromFile(fragmentShaderPath);
+
+	return cocos2d::backend::Device::getInstance()->newProgram(vertSourceRaw, fragSourceRaw);
 }
 
 
@@ -106,7 +137,7 @@ void DynamicLight::updateShadowMap(cocos2d::Renderer *renderer, const cocos2d::M
     
 }
 
-void DynamicLight::setPosition(const Point& position)
+void DynamicLight::setPosition(const Vec2& position)
 {
     if (position.x == getPosition().x && position.y == getPosition().y) {
         return;
@@ -130,14 +161,14 @@ void DynamicLight::draw(cocos2d::Renderer *renderer, const cocos2d::Mat4 &transf
 		createShadowMap(renderer, transform, flags);
 
 		// update shadowRenderShader textures
-		shadowRenderShader->setUniformTexture("u_texture", occlusionMapSprite->getTexture());
-		shadowRenderShader->setUniformTexture("u_texture2", shadowMap1DSprite->getTexture());
+		setUniform(shadowRenderShader, "u_texture", occlusionMapSprite->getTexture());
+		//setUniform(shadowRenderShader, "u_texture2", shadowMap1DSprite->getTexture());
 
 		finalShadowMapSprite->setColor({ 255, 255, 255 });
-		finalShadowMapSprite->setGLProgramState(shadowRenderShader);
+		finalShadowMapSprite->setProgramState(shadowRenderShader);
 		finalShadowMapSprite->setAnchorPoint({ 0.5, 0.5 });
 		finalShadowMapSprite->setPosition((-getPositionX() + lightSize / 2) / 2, (-getPositionY() + lightSize / 2) / 2);
-		finalShadowMapSprite->setBlendFunc({ GL_SRC_COLOR , GL_ONE });
+		finalShadowMapSprite->setBlendFunc({ cocos2d::backend::BlendFactor::SRC_COLOR , cocos2d::backend::BlendFactor::ONE });
     }
 
 	finalShadowMapSprite->visit(renderer, transform, flags);
@@ -173,12 +204,12 @@ void DynamicLight::debugDraw(cocos2d::Renderer *renderer, const cocos2d::Mat4 &t
 void DynamicLight::updateUniforms()
 {
 	// update other uniforms
-	shadowMapShader->setUniformVec2("resolution", Vec2(lightSize, lightSize));
-	shadowMapShader->setUniformFloat("upScale", 1.0);
-	shadowMapShader->setUniformFloat("accuracy", 1.0);
+    setUniform(shadowMapShader, "resolution", Vec2(lightSize, lightSize));
+    setUniform(shadowMapShader, "upScale", 1.0f);
+    setUniform(shadowMapShader, "accuracy", 1.0f);
 
-	shadowRenderShader->setUniformVec2("resolution", Vec2(lightSize, lightSize));
-	shadowRenderShader->setUniformFloat("softShadows", softShadows ? 1.0f : 0.0f);
+    setUniform(shadowRenderShader, "resolution", Vec2(lightSize, lightSize));
+    setUniform(shadowRenderShader, "softShadows", softShadows ? 1.0f : 0.0f);
 }
 
 void DynamicLight::createOcclusionMap()
@@ -193,8 +224,8 @@ void DynamicLight::createShadowMap(cocos2d::Renderer *renderer, const cocos2d::M
 		occlusionMap->end();
 		return;
 	}
-	Point p1 = shadowCasters->getAnchorPoint();
-	Point p2 = shadowCasters->getPosition();
+	Vec2 p1 = shadowCasters->getAnchorPoint();
+	Vec2 p2 = shadowCasters->getPosition();
 	auto x = shadowCasters->getPositionX() - (getPositionX() - (lightSize / 2));
 	auto y = shadowCasters->getPositionY() - (getPositionY() - (lightSize / 2));
 	// Render light region to occluder FBO
@@ -211,8 +242,8 @@ void DynamicLight::createShadowMap(cocos2d::Renderer *renderer, const cocos2d::M
 	occlusionMapSprite->setFlippedY(true);
 	occlusionMapSprite->setAnchorPoint({ 0, 0 });
 	occlusionMapSprite->setPosition({ -getPositionX(), -getPositionY() });
-	shadowMapShader->setUniformTexture("u_texture", occlusionMapSprite->getTexture());
-	occlusionMapSprite->setGLProgramState(shadowMapShader);
+	setUniform(shadowMapShader, "u_texture", occlusionMapSprite->getTexture());
+	occlusionMapSprite->setProgramState(shadowMapShader);
 
     // Build a 1D shadow map from occlude FBO
     shadowMap1D->beginWithClear(0.0, 0.0, 0.0, 0.0);
